@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Property Analyst Bot</title>
+    <!-- Marked.js included here to ensure it loads synchronously and is ready for use -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.12/marked.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -149,6 +151,7 @@
             if (isLoading) {
                 buttonText.textContent = 'Analyzing...';
                 loadingIndicator.classList.remove('hidden');
+                // Display loading message in output area
                 outputArea.innerHTML = '<div class="flex items-center space-x-2 text-indigo-600"><div class="loading-spinner w-5 h-5 border-4 border-indigo-600 border-b-transparent rounded-full"></div><span>Performing due diligence...</span></div>';
                 sourcesArea.classList.add('hidden');
             } else {
@@ -215,7 +218,8 @@ Each section must contain a concise, paragraph-long summary grounded in the sear
                     if (candidate && candidate.content?.parts?.[0]?.text) {
                         // 1. Extract the generated text
                         const analysisText = candidate.content.parts[0].text;
-                        outputArea.innerHTML = marked.parse(analysisText); // Use marked.js for Markdown
+                        // marked is guaranteed to exist now since it's loaded in the head
+                        outputArea.innerHTML = marked.parse(analysisText);
 
                         // 2. Extract grounding sources
                         let sources = [];
@@ -257,16 +261,6 @@ Each section must contain a concise, paragraph-long summary grounded in the sear
             }
             setLoadingState(false);
         }
-
-        // Initialize marked.js for Markdown parsing
-        // marked.js is available via CDN
-        const markedScript = document.createElement('script');
-        markedScript.src = "https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.12/marked.min.js";
-        document.head.appendChild(markedScript);
-
-        // Add a global variable for marked if needed, though it often registers globally
-        // We ensure marked is ready before attempting to use it.
-        window.marked = window.marked || marked;
 
         // Explicitly attach the event listener to the form element
         form.addEventListener('submit', (e) => {
