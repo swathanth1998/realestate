@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Property Analyst Bot</title>
+    <!-- Marked.js included here to ensure it loads synchronously and is ready for use -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.12/marked.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .container {
+            max-width: 900px;
+        }
+        .card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+        .citation {
+            font-size: 0.75rem;
+            color: #4a5568;
+            margin-top: 0.5rem;
+            display: block;
+        }
+        .citation a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        .citation a:hover {
+            text-decoration: underline;
+        }
+        /* Custom scrollbar for output */
+        #output-area {
+            max-height: 70vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #4f46e5 #e0e7ff;
+        }
+        #output-area::-webkit-scrollbar {
+            width: 8px;
+        }
+        #output-area::-webkit-scrollbar-track {
+            background: #e0e7ff;
+            border-radius: 10px;
+        }
+        #output-area::-webkit-scrollbar-thumb {
+            background-color: #4f46e5;
+            border-radius: 10px;
+            border: 2px solid #e0e7ff;
+        }
+        .loading-spinner {
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="container mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2">
+                <span class="text-indigo-600">AI</span> Property Analyst Bot
+            </h1>
+            <p class="text-gray-500">Get a 3-point investment analysis on any land or property address.</p>
+        </header>
+
+        <!-- Input Card -->
+        <div class="card bg-white p-6 md:p-8 rounded-xl shadow-lg mb-8">
+            <form id="analysis-form">
+                <div class="mb-4">
+                    <label for="property-address" class="block text-lg font-medium text-gray-700 mb-2">
+                        Enter Property Address
+                    </label>
+                    <textarea id="property-address" rows="3" required
+                        placeholder="e.g., 100 Main St, Anytown, CA"
+                        class="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out resize-none text-gray-800"
+                    ></textarea>
+                </div>
+
+                <button type="submit" id="submit-button"
+                    class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                    <span id="button-text">Analyze Property</span>
+                    <div id="loading-indicator" class="hidden loading-spinner w-5 h-5 border-4 border-gray-100 rounded-full" role="status"></div>
+                </button>
+            </form>
+        </div>
+
+        <!-- Output Card -->
+        <div class="card bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Analysis Results</h2>
+            <div id="output-area" class="text-gray-700 whitespace-pre-wrap">
+                <p class="text-gray-500 italic">Enter an address and click 'Analyze Property' to begin the investment assessment.</p>
+            </div>
+            <div id="sources-area" class="mt-4 border-t pt-4 hidden">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">Sources Grounding This Analysis:</h3>
+                <ul id="sources-list" class="space-y-1"></ul>
+            </div>
+        </div>
+
+        <!-- Error Message Box -->
+        <div id="error-message" class="hidden fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-xl transition-opacity duration-300" role="alert">
+            <p id="error-text"></p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Global variables provided by the environment
+        const apiKey = "";
+        const apiUrlBase = "https://generativelanguage.googleapis.com/v1beta/models/";
+        const modelName = "gemini-2.5-flash-preview-09-2025";
+        const apiUrl = `${apiUrlBase}${modelName}:generateContent?key=${apiKey}`;
+
+        const form = document.getElementById('analysis-form');
+        const addressInput = document.getElementById('property-address');
+        const outputArea = document.getElementById('output-area');
+        const sourcesArea = document.getElementById('sources-area');
+        const sourcesList = document.getElementById('sources-list');
+        const submitButton = document.getElementById('submit-button');
+        const buttonText = document.getElementById('button-text');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorBox = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+
+        /**
+         * Custom utility function to display an error message for a short period.
+         * @param {string} message The error message to display.
+         */
+        function showCustomError(message) {
+            errorText.textContent = message;
+            errorBox.classList.remove('hidden');
+            setTimeout(() => {
+                errorBox.classList.add('hidden');
+            }, 5000);
+        }
+
+        /**
+         * Sets the loading state of the UI.
+         * @param {boolean} isLoading - Whether the application is currently loading.
+         */
+        function setLoadingState(isLoading) {
+            submitButton.disabled = isLoading;
+            if (isLoading) {
+                buttonText.textContent = 'Analyzing...';
+                loadingIndicator.classList.remove('hidden');
+                // Display loading message in output area
+                outputArea.innerHTML = '<div class="flex items-center space-x-2 text-indigo-600"><div class="loading-spinner w-5 h-5 border-4 border-indigo-600 border-b-transparent rounded-full"></div><span>Performing due diligence...</span></div>';
+                sourcesArea.classList.add('hidden');
+            } else {
+                buttonText.textContent = 'Analyze Property';
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Main function to perform the property analysis using the Gemini API.
+         */
+        async function analyzeProperty() {
+            const address = addressInput.value.trim();
+            if (!address) {
+                showCustomError("Please enter a property address to analyze.");
+                return;
+            }
+
+            setLoadingState(true);
+            sourcesList.innerHTML = '';
+
+            const systemPrompt = `You are a professional, highly resourceful real estate investment analyst. Your task is to provide a detailed, three-part analysis for the given property address based on the latest available public data and search results.
+
+Structure your response clearly using the following three bolded headings in Markdown:
+**1. Estimated Acquisition Value**
+**2. Development Potential & Zoning**
+**3. Projected Resale Value (Comparables)**
+
+Each section must contain a concise, paragraph-long summary grounded in the search results. For section 1, provide a range or a recommended maximum offer price. For section 2, specifically mention likely zoning classifications (e.g., R-1, Commercial) and potential build types (e.g., single-family home, multi-unit dwelling). For section 3, estimate a potential resale value after development based on comparable sales in the area. If specific data is unavailable, state the uncertainty and provide general guidance.`;
+
+            const userQuery = `Perform a comprehensive, three-point investment analysis for the property address: ${address}.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            const maxRetries = 5;
+            let currentDelay = 1000; // 1 second
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429 && i < maxRetries - 1) {
+                            // Too Many Requests (Rate Limit) - Retry with backoff
+                            await new Promise(resolve => setTimeout(resolve, currentDelay));
+                            currentDelay *= 2; // Exponential backoff
+                            continue;
+                        }
+                        const errorData = await response.json();
+                        throw new Error(`API Error: ${response.status} - ${errorData.error.message || response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        // 1. Extract the generated text
+                        const analysisText = candidate.content.parts[0].text;
+                        // marked is guaranteed to exist now since it's loaded in the head
+                        outputArea.innerHTML = marked.parse(analysisText);
+
+                        // 2. Extract grounding sources
+                        let sources = [];
+                        const groundingMetadata = candidate.groundingMetadata;
+                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                            sources = groundingMetadata.groundingAttributions
+                                .map(attribution => ({
+                                    uri: attribution.web?.uri,
+                                    title: attribution.web?.title,
+                                }))
+                                .filter(source => source.uri && source.title);
+                        }
+
+                        if (sources.length > 0) {
+                            sourcesArea.classList.remove('hidden');
+                            sourcesList.innerHTML = sources.map(source => `
+                                <li class="citation truncate">
+                                    <a href="${source.uri}" target="_blank" rel="noopener noreferrer" title="${source.title}">
+                                        ${source.title}
+                                    </a>
+                                </li>
+                            `).join('');
+                        } else {
+                            sourcesArea.classList.add('hidden');
+                        }
+                    } else {
+                        throw new Error("Analysis failed: Could not retrieve valid content from the AI.");
+                    }
+
+                    // Success, break out of the retry loop
+                    break;
+
+                } catch (error) {
+                    console.error("Fetch failed:", error);
+                    setLoadingState(false);
+                    outputArea.innerHTML = `<p class="text-red-600 font-medium">Error during analysis: ${error.message}. Please check the address and try again.</p>`;
+                    return;
+                }
+            }
+            setLoadingState(false);
+        }
+
+        // Explicitly attach the event listener to the form element
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            analyzeProperty();
+        });
+        
+    </script>
+</body>
+</html>
